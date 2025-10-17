@@ -9,8 +9,8 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        string getUrl = "https://api.restful-api.dev/objects/1";  // Use an existing object ID
-        string postUrl = "https://api.restful-api.dev/objects";   // Endpoint to POST new product
+        string getUrl = "https://api.restful-api.dev/objects/1";  // Existing object ID
+        string postUrl = "https://api.restful-api.dev/objects";   // POST endpoint
 
         try
         {
@@ -61,17 +61,46 @@ public class Program
                 Console.WriteLine("Failed to create new product.");
             }
 
+            // --- GET the posted product ---
             string getUrl2 = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
-            Product Post_product = await ApiClient.GetProductAsync(getUrl2);
-            if (Post_product != null)
+            Product postProduct = await ApiClient.GetProductAsync(getUrl2);
+            if (postProduct != null)
             {
                 Console.WriteLine("\n--- Fetched Posted Product ---");
-                Console.WriteLine($"ID: {Post_product.Id}");
-                Console.WriteLine($"Name: {Post_product.Name}");
-                Console.WriteLine($"Year: {Post_product.Data?.Year}");
-                Console.WriteLine($"Price: {Post_product.Data?.Price}");
-                Console.WriteLine($"CPU: {Post_product.Data?.CPUModel}");
-                Console.WriteLine($"Disk: {Post_product.Data?.HardDiskSize}");
+                Console.WriteLine($"ID: {postProduct.Id}");
+                Console.WriteLine($"Name: {postProduct.Name}");
+                Console.WriteLine($"Year: {postProduct.Data?.Year}");
+                Console.WriteLine($"Price: {postProduct.Data?.Price}");
+                Console.WriteLine($"CPU: {postProduct.Data?.CPUModel}");
+                Console.WriteLine($"Disk: {postProduct.Data?.HardDiskSize}");
+            }
+
+            // --- PUT Request ---
+            if (createdProduct != null)
+            {
+                Console.WriteLine("\nUpdating product (PUT)...");
+
+                // Modify the product
+                createdProduct.Name = "Apple MacBook Pro 16 - Updated";
+                createdProduct.Data.Price = 1999.99;
+                createdProduct.Data.HardDiskSize = "2 TB";
+
+                string putUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
+
+                Product updatedProduct = await ApiClient.UpdateProductAsync(putUrl, createdProduct);
+
+                if (updatedProduct != null)
+                {
+                    Console.WriteLine("\n--- Product Updated ---");
+                    Console.WriteLine($"ID: {updatedProduct.Id}");
+                    Console.WriteLine($"Name: {updatedProduct.Name}");
+                    Console.WriteLine($"Price: {updatedProduct.Data?.Price}");
+                    Console.WriteLine($"Disk: {updatedProduct.Data?.HardDiskSize}");
+                }
+                else
+                {
+                    Console.WriteLine("Failed to update product.");
+                }
             }
         }
         catch (HttpRequestException e)
@@ -86,8 +115,6 @@ public class Program
         {
             Console.WriteLine($"An unexpected error occurred: {e.Message}");
         }
-
-        
     }
 }
 
@@ -142,6 +169,33 @@ public class ApiClient
         else
         {
             Console.WriteLine($"POST Error: {response.StatusCode} - {response.ReasonPhrase}");
+            return null;
+        }
+    }
+
+    // PUT
+    public static async Task<Product> UpdateProductAsync(string url, Product updatedProduct)
+    {
+        string jsonContent = JsonSerializer.Serialize(updatedProduct);
+        HttpContent content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+        HttpResponseMessage response = await client.PutAsync(url, content);
+
+        if (response.IsSuccessStatusCode)
+        {
+            string responseBody = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"\nRaw PUT JSON:\n{responseBody}");
+
+            Product updated = JsonSerializer.Deserialize<Product>(responseBody, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return updated;
+        }
+        else
+        {
+            Console.WriteLine($"PUT Error: {response.StatusCode} - {response.ReasonPhrase}");
             return null;
         }
     }
