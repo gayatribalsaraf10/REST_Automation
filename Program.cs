@@ -78,7 +78,7 @@ public class Program
             // --- PUT Request ---
             if (createdProduct != null)
             {
-                Console.WriteLine("\nUpdating product (PUT)...");
+                Console.WriteLine("\nUpdating product (PUT) request...");
 
                 // Modify the product
                 createdProduct.Name = "Apple MacBook Pro 16 - Updated";
