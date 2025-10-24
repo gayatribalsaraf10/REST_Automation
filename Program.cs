@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -80,7 +81,6 @@ public class Program
             {
                 Console.WriteLine("\nUpdating product (PUT) request...");
 
-                // Modify the product
                 createdProduct.Name = "Apple MacBook Pro 16 - Updated";
                 createdProduct.Data.Price = 1999.99;
                 createdProduct.Data.HardDiskSize = "2 TB";
@@ -102,6 +102,36 @@ public class Program
                     Console.WriteLine("Failed to update product.");
                 }
             }
+
+            // --- PATCH Request ---
+            if (createdProduct != null)
+            {
+                Console.WriteLine("\nUpdating product (PATCH) request for title and price...");
+
+                var patchData = new
+                {
+                    name = "Apple MacBook Pro 16 - new Patched Title",
+                    data = new
+                    {
+                        price = 2099.99
+                    }
+                };
+
+                string patchUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
+                Product patchedProduct = await ApiClient.PatchProductAsync(patchUrl, patchData);
+
+                if (patchedProduct != null)
+                {
+                    Console.WriteLine("\n--- Product Patched ---");
+                    Console.WriteLine($"ID: {patchedProduct.Id}");
+                    Console.WriteLine($"Name: {patchedProduct.Name}");
+                    Console.WriteLine($"Price: {patchedProduct.Data?.Price}");
+                }
+                else
+                {
+                    Console.WriteLine("Failed to patch product.");
+                }
+            }
         }
         catch (HttpRequestException e)
         {
@@ -121,6 +151,12 @@ public class Program
 public class ApiClient
 {
     private static readonly HttpClient client = new HttpClient();
+
+    static ApiClient()
+    {
+        client.DefaultRequestHeaders.Accept.Clear();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    }
 
     // GET
     public static async Task<Product> GetProductAsync(string url)
@@ -196,6 +232,38 @@ public class ApiClient
         else
         {
             Console.WriteLine($"PUT Error: {response.StatusCode} - {response.ReasonPhrase}");
+            return null;
+        }
+    }
+
+    // PATCH
+    public static async Task<Product> PatchProductAsync(string url, object patchData)
+    {
+        string jsonContent = JsonSerializer.Serialize(patchData);
+        HttpContent content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+        var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+        {
+            Content = content
+        };
+
+        HttpResponseMessage response = await client.SendAsync(request);
+
+        if (response.IsSuccessStatusCode)
+        {
+            string responseBody = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"\nRaw PATCH JSON:\n{responseBody}");
+
+            Product patchedProduct = JsonSerializer.Deserialize<Product>(responseBody, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return patchedProduct;
+        }
+        else
+        {
+            Console.WriteLine($"PATCH Error: {response.StatusCode} - {response.ReasonPhrase}");
             return null;
         }
     }
