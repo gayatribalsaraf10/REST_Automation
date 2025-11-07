@@ -12,29 +12,40 @@ public class Program
     {
         string getUrl = "https://api.restful-api.dev/objects/2";
         string postUrl = "https://api.restful-api.dev/objects";
+
         try
         {
             // --- GET Request ---
             Console.WriteLine("Fetching product data (GET)...");
             await Product.GetDataAsync(getUrl);
-            // --- POST Request ---
-            Product newProduct = new Product
-            {
-                Name = "Apple MacBook Pro 16",
-                Data = new ProductData
-                {
-                    Year = 2019,
-                    Price = 1849.99,
-                    CPUModel = "Intel Core i9",
-                    HardDiskSize = "1 TB",
-                }
-            };
+
+            // --- POST Request (JSON input) ---
+            Console.WriteLine("\nEnter JSON data for new product (example below):");
+            Console.WriteLine(@"{
+    ""name"": ""Apple MacBook Pro 16"",
+    ""data"": {
+        ""year"": 2019,
+        ""price"": 1849.99,
+        ""CPU model"": ""Intel Core i9"",
+        ""Hard disk size"": ""1 TB""
+    }
+}");
+            Console.Write("\nPaste your JSON here: ");
+            string jsonInput = Console.ReadLine();
+
             Console.WriteLine("\nAdding new product (POST)...");
-            Product createdProduct = await ApiClient.CreateProductAsync(postUrl, newProduct);
+            Product createdProduct = await Product.PostDataFromJsonAsync(postUrl, jsonInput);
+
+            if (createdProduct == null)
+            {
+                Console.WriteLine("Failed to create product. Exiting...");
+                return;
+            }
 
             // --- GET the posted product ---
             string getUrl2 = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
             await Product.GetDataAsync(getUrl2);
+
             // --- PUT Request ---
             Console.WriteLine("\nUpdating product (PUT) request...");
             await Product.PutDataAsync(createdProduct);
@@ -46,7 +57,8 @@ public class Program
             // --- DELETE Request ---
             Console.WriteLine("\nDeleting product (DELETE) request...");
             string deletedId = await Product.DeleteDataAsync(createdProduct);
-            Console.WriteLine("/nConfirming DELETE action");
+
+            Console.WriteLine("\nConfirming DELETE action...");
             string getUrl3 = $"https://api.restful-api.dev/objects/{deletedId}";
             await Product.GetDataAsync(getUrl3);
         }
@@ -141,20 +153,20 @@ public class ApiClient
         return JsonSerializer.Deserialize<Product>(responseBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
-    //DELETE
+    // DELETE
     public static async Task<bool> DeleteProductAsync(string url)
-{
-    HttpResponseMessage response = await client.DeleteAsync(url);
-
-    if (!response.IsSuccessStatusCode)
     {
-        Console.WriteLine($"DELETE Error: {response.StatusCode} - {response.ReasonPhrase}");
-        return false;
-    }
+        HttpResponseMessage response = await client.DeleteAsync(url);
 
-    Console.WriteLine("Product deleted successfully.");
-    return true;
-}
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.WriteLine($"DELETE Error: {response.StatusCode} - {response.ReasonPhrase}");
+            return false;
+        }
+
+        Console.WriteLine("Product deleted successfully.");
+        return true;
+    }
 }
 
 public class Product
@@ -173,7 +185,7 @@ public class Product
         Product product = await ApiClient.GetProductAsync(geturl);
 
         if (product != null)
-        {           
+        {
             Console.WriteLine($"ID: {product.Id}");
             Console.WriteLine($"Name: {product.Name}");
             Console.WriteLine($"Year: {product.Data?.Year}");
@@ -187,26 +199,43 @@ public class Product
         }
     }
 
-    public static async Task<Product> PostDataAsync(string posturl, Product newProduct)
+    // NEW METHOD — accept JSON input for POST
+    public static async Task<Product> PostDataFromJsonAsync(string postUrl, string jsonData)
     {
-        Product createdProduct = await ApiClient.CreateProductAsync(posturl, newProduct);
-
-        if (createdProduct != null)
+        try
         {
-            Console.WriteLine("\n--- New Product Created ---");
-            Console.WriteLine($"ID: {createdProduct.Id}");
-            Console.WriteLine($"Name: {createdProduct.Name}");
-            Console.WriteLine($"Year: {createdProduct.Data?.Year}");
-            Console.WriteLine($"Price: {createdProduct.Data?.Price}");
-            Console.WriteLine($"CPU: {createdProduct.Data?.CPUModel}");
-            Console.WriteLine($"Disk: {createdProduct.Data?.HardDiskSize}");
+            Product newProduct = JsonSerializer.Deserialize<Product>(jsonData, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (newProduct == null)
+            {
+                Console.WriteLine("Invalid JSON format.");
+                return null;
+            }
+
+            Product createdProduct = await ApiClient.CreateProductAsync(postUrl, newProduct);
+
+            if (createdProduct != null)
+            {
+                Console.WriteLine("\n--- New Product Created ---");
+                Console.WriteLine($"ID: {createdProduct.Id}");
+                Console.WriteLine($"Name: {createdProduct.Name}");
+                Console.WriteLine($"Year: {createdProduct.Data?.Year}");
+                Console.WriteLine($"Price: {createdProduct.Data?.Price}");
+                Console.WriteLine($"CPU: {createdProduct.Data?.CPUModel}");
+                Console.WriteLine($"Disk: {createdProduct.Data?.HardDiskSize}");
+            }
+
+            return createdProduct;
         }
-        return createdProduct;
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"Error parsing JSON: {ex.Message}");
+            return null;
+        }
     }
 
     public static async Task PutDataAsync(Product createdProduct)
     {
-
         createdProduct.Name = "Apple MacBook Pro 16 - Updated through PUT";
         createdProduct.Data.Price = 1999.99;
         createdProduct.Data.HardDiskSize = "2 TB";
@@ -245,20 +274,20 @@ public class Product
             Console.WriteLine($"Hard Disk Size: {patchedProduct.Data?.HardDiskSize}");
         }
     }
-    
+
     public static async Task<string> DeleteDataAsync(Product createdProduct)
     {
         string deleteUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
         bool isDeleted = await ApiClient.DeleteProductAsync(deleteUrl);
 
-            if (isDeleted)
-            {
-                Console.WriteLine($"\n--- Product Deleted ---");
-                Console.WriteLine($"Deleted Product ID: {createdProduct.Id}");
-            }
-            return createdProduct.Id;
-    }
+        if (isDeleted)
+        {
+            Console.WriteLine($"\n--- Product Deleted ---");
+            Console.WriteLine($"Deleted Product ID: {createdProduct.Id}");
+        }
 
+        return createdProduct.Id;
+    }
 }
 
 public class ProductData
