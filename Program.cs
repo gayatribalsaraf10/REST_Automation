@@ -1,85 +1,87 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using ClosedXML.Excel;
 
+// ---------------- MAIN PROGRAM ----------------
 public class Program
 {
     public static async Task Main(string[] args)
     {
-        string getUrl = "https://api.restful-api.dev/objects/2";
         string postUrl = "https://api.restful-api.dev/objects";
 
         try
         {
-            // --- GET Request ---
-            Console.WriteLine("Fetching product data (GET)...");
-            await Product.GetDataAsync(getUrl);
+            Console.WriteLine("Fetching sample product (GET)...");
+            await Product.GetDataAsync("https://api.restful-api.dev/objects/2");
 
-            // --- POST Request (JSON input) ---
-            Console.WriteLine("\nEnter JSON data for new product (example below):");
-            Console.WriteLine(@"{
-    ""name"": ""Apple MacBook Pro 16"",
-    ""data"": {
-        ""year"": 2019,
-        ""price"": 1849.99,
-        ""CPU model"": ""Intel Core i9"",
-        ""Hard disk size"": ""1 TB""
-    }
-}");
-            Console.Write("\nPaste your JSON here: ");
-            string jsonInput = Console.ReadLine();
+            // --- Excel input ---
+            
+            string fileName = "Data for POST.xlsx";
+            string folderPath = Environment.CurrentDirectory;
+            Console.WriteLine($"Using folder path: {folderPath}");
 
-            Console.WriteLine("\nAdding new product (POST)...");
-            Product createdProduct = await Product.PostDataFromJsonAsync(postUrl, jsonInput);
+            List<Product> products = Product.ReadProductsFromExcel(folderPath, fileName);
 
-            if (createdProduct == null)
+            if (products.Count == 0)
             {
-                Console.WriteLine("Failed to create product. Exiting...");
+                Console.WriteLine("No valid products found in Excel. Exiting...");
                 return;
             }
 
-            // --- GET the posted product ---
-            string getUrl2 = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
-            await Product.GetDataAsync(getUrl2);
+            foreach (var prod in products)
+            {
+                // --- POST ---
+                Console.WriteLine($"\nPosting product: {prod.Name}");
+                Product createdProduct = await ApiClient.CreateProductAsync(postUrl, prod);
 
-            // --- PUT Request ---
-            Console.WriteLine("\nUpdating product (PUT) request...");
-            await Product.PutDataAsync(createdProduct);
+                if (createdProduct == null)
+                {
+                    Console.WriteLine("POST failed, skipping...");
+                    continue;
+                }
 
-            // --- PATCH Request ---
-            Console.WriteLine("\nUpdating product (PATCH) request for name and CPU Model...");
-            await Product.PatchDataAsync(createdProduct);
+                Console.WriteLine("\n--- Created Product ---");
+                Product.Print(createdProduct);
 
-            // --- DELETE Request ---
-            Console.WriteLine("\nDeleting product (DELETE) request...");
-            string deletedId = await Product.DeleteDataAsync(createdProduct);
+                // --- GET ---
+                Console.WriteLine("\nFetching created product (GET)...");
+                string getUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
+                await Product.GetDataAsync(getUrl);
 
-            Console.WriteLine("\nConfirming DELETE action...");
-            string getUrl3 = $"https://api.restful-api.dev/objects/{deletedId}";
-            await Product.GetDataAsync(getUrl3);
+                // --- PUT ---
+                Console.WriteLine("\nUpdating product (PUT)...");
+                await Product.PutDataAsync(createdProduct);
+
+                // --- PATCH ---
+                Console.WriteLine("\nPatching product (PATCH)...");
+                await Product.PatchDataAsync(createdProduct);
+
+                // --- DELETE ---
+                Console.WriteLine("\nDeleting product (DELETE)...");
+                await Product.DeleteDataAsync(createdProduct);
+            }
+
+            Console.WriteLine("\n✅ Process completed for all Excel products.");
         }
-        catch (HttpRequestException e)
+        catch (Exception ex)
         {
-            Console.WriteLine($"Request exception: {e.Message}");
-        }
-        catch (JsonException e)
-        {
-            Console.WriteLine($"JSON deserialization exception: {e.Message}");
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine($"An unexpected error occurred: {e.Message}");
+            Console.WriteLine($"❌ Unexpected error: {ex.Message}");
         }
     }
 }
 
+// ---------------- API CLIENT ----------------
 public class ApiClient
 {
-    private static readonly HttpClient client = new HttpClient();
+    public static readonly HttpClient client = new HttpClient();
 
     static ApiClient()
     {
@@ -91,14 +93,16 @@ public class ApiClient
     public static async Task<Product> GetProductAsync(string url)
     {
         HttpResponseMessage response = await client.GetAsync(url);
+        string jsonResponse = await response.Content.ReadAsStringAsync();
+
         if (!response.IsSuccessStatusCode)
         {
             Console.WriteLine($"GET Error: {response.StatusCode} - {response.ReasonPhrase}");
             return null;
         }
 
-        string jsonResponse = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<Product>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return JsonSerializer.Deserialize<Product>(jsonResponse,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
     // POST
@@ -108,14 +112,16 @@ public class ApiClient
         HttpContent content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
         HttpResponseMessage response = await client.PostAsync(url, content);
+        string responseBody = await response.Content.ReadAsStringAsync();
+
         if (!response.IsSuccessStatusCode)
         {
-            Console.WriteLine($"POST Error: {response.StatusCode} - {response.ReasonPhrase}");
+            Console.WriteLine($"POST Error: {response.StatusCode}");
             return null;
         }
 
-        string responseBody = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<Product>(responseBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return JsonSerializer.Deserialize<Product>(responseBody,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
     // PUT
@@ -125,32 +131,38 @@ public class ApiClient
         HttpContent content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
         HttpResponseMessage response = await client.PutAsync(url, content);
+        string responseBody = await response.Content.ReadAsStringAsync();
+
         if (!response.IsSuccessStatusCode)
         {
-            Console.WriteLine($"PUT Error: {response.StatusCode} - {response.ReasonPhrase}");
+            Console.WriteLine($"PUT Error: {response.StatusCode}");
             return null;
         }
 
-        string responseBody = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<Product>(responseBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return JsonSerializer.Deserialize<Product>(responseBody,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
     // PATCH
-    public static async Task<Product> PatchProductAsync(string url, Product patchData)
+    public static async Task<Product> PatchProductAsync(string url, object patchData)
     {
         string jsonContent = JsonSerializer.Serialize(patchData);
-        HttpContent content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+        var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+        {
+            Content = new StringContent(jsonContent, Encoding.UTF8, "application/json")
+        };
 
-        var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
         HttpResponseMessage response = await client.SendAsync(request);
+        string responseBody = await response.Content.ReadAsStringAsync();
+
         if (!response.IsSuccessStatusCode)
         {
-            Console.WriteLine($"PATCH Error: {response.StatusCode} - {response.ReasonPhrase}");
+            Console.WriteLine($"PATCH Error: {response.StatusCode}");
             return null;
         }
 
-        string responseBody = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<Product>(responseBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return JsonSerializer.Deserialize<Product>(responseBody,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
     // DELETE
@@ -160,7 +172,7 @@ public class ApiClient
 
         if (!response.IsSuccessStatusCode)
         {
-            Console.WriteLine($"DELETE Error: {response.StatusCode} - {response.ReasonPhrase}");
+            Console.WriteLine($"DELETE Error: {response.StatusCode}");
             return false;
         }
 
@@ -169,6 +181,7 @@ public class ApiClient
     }
 }
 
+// ---------------- PRODUCT CLASS ----------------
 public class Product
 {
     [JsonPropertyName("id")]
@@ -180,116 +193,166 @@ public class Product
     [JsonPropertyName("data")]
     public ProductData Data { get; set; }
 
-    public static async Task GetDataAsync(string geturl)
+    // GET
+    public static async Task GetDataAsync(string url)
     {
-        Product product = await ApiClient.GetProductAsync(geturl);
-
-        if (product != null)
-        {
-            Console.WriteLine($"ID: {product.Id}");
-            Console.WriteLine($"Name: {product.Name}");
-            Console.WriteLine($"Year: {product.Data?.Year}");
-            Console.WriteLine($"Price: {product.Data?.Price}");
-            Console.WriteLine($"CPU: {product.Data?.CPUModel}");
-            Console.WriteLine($"Disk: {product.Data?.HardDiskSize}");
-        }
-        else
-        {
-            Console.WriteLine("Failed to retrieve product data.");
-        }
+        Product product = await ApiClient.GetProductAsync(url);
+        if (product != null) Print(product);
     }
 
-    // NEW METHOD — accept JSON input for POST
-    public static async Task<Product> PostDataFromJsonAsync(string postUrl, string jsonData)
+    // PUT
+    public static async Task PutDataAsync(Product product)
     {
-        try
+        var updated = new Product
         {
-            Product newProduct = JsonSerializer.Deserialize<Product>(jsonData, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (newProduct == null)
+            Id = product.Id,
+            Name = product.Name + " - Updated via PUT",
+            Data = new ProductData
             {
-                Console.WriteLine("Invalid JSON format.");
-                return null;
+                Year = product.Data.Year,
+                Price = product.Data.Price + 100,
+                CPUModel = product.Data.CPUModel,
+                HardDiskSize = "2 TB"
             }
+        };
 
-            Product createdProduct = await ApiClient.CreateProductAsync(postUrl, newProduct);
+        string putUrl = $"https://api.restful-api.dev/objects/{product.Id}";
+        Product result = await ApiClient.UpdateProductAsync(putUrl, updated);
 
-            if (createdProduct != null)
-            {
-                Console.WriteLine("\n--- New Product Created ---");
-                Console.WriteLine($"ID: {createdProduct.Id}");
-                Console.WriteLine($"Name: {createdProduct.Name}");
-                Console.WriteLine($"Year: {createdProduct.Data?.Year}");
-                Console.WriteLine($"Price: {createdProduct.Data?.Price}");
-                Console.WriteLine($"CPU: {createdProduct.Data?.CPUModel}");
-                Console.WriteLine($"Disk: {createdProduct.Data?.HardDiskSize}");
-            }
-
-            return createdProduct;
-        }
-        catch (JsonException ex)
+        if (result != null)
         {
-            Console.WriteLine($"Error parsing JSON: {ex.Message}");
-            return null;
+            Console.WriteLine("\n--- Product Updated (PUT) ---");
+            Print(result);
         }
     }
 
-    public static async Task PutDataAsync(Product createdProduct)
+    // PATCH
+    public static async Task PatchDataAsync(Product product)
     {
-        createdProduct.Name = "Apple MacBook Pro 16 - Updated through PUT";
-        createdProduct.Data.Price = 1999.99;
-        createdProduct.Data.HardDiskSize = "2 TB";
-        string putUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
-        Product updatedProduct = await ApiClient.UpdateProductAsync(putUrl, createdProduct);
-
-        if (updatedProduct != null)
+        var patchBody = new
         {
-            Console.WriteLine("\n--- Product Updated ---");
-            Console.WriteLine($"ID: {updatedProduct.Id}");
-            Console.WriteLine($"Name: {updatedProduct.Name}");
-            Console.WriteLine($"Year: {updatedProduct.Data?.Year}");
-            Console.WriteLine($"Price: {updatedProduct.Data?.Price}");
-            Console.WriteLine($"CPU: {updatedProduct.Data?.CPUModel}");
-            Console.WriteLine($"Disk: {updatedProduct.Data?.HardDiskSize}");
-        }
-    }
+            name = product.Name + " - Patched",
+            data = new Dictionary<string, object>
+                {
+                    ["CPU model"] = "14-Core CPU"
+                }
+        };
 
-    public static async Task PatchDataAsync(Product createdProduct)
-    {
-        createdProduct.Name = "Apple MacBook Pro 16 - Updated through PATCH";
-        createdProduct.Data.Year = 2019;
-        createdProduct.Data.CPUModel = "14 Core CPU";
+        string patchUrl = $"https://api.restful-api.dev/objects/{product.Id}";
+        Product patched = await ApiClient.PatchProductAsync(patchUrl, patchBody);
 
-        string patchUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
-        Product patchedProduct = await ApiClient.PatchProductAsync(patchUrl, createdProduct);
-
-        if (patchedProduct != null)
+        if (patched != null)
         {
             Console.WriteLine("\n--- Product Patched ---");
-            Console.WriteLine($"ID: {patchedProduct.Id}");
-            Console.WriteLine($"Name: {patchedProduct.Name}");
-            Console.WriteLine($"Year: {patchedProduct.Data?.Year}");
-            Console.WriteLine($"Price: {patchedProduct.Data?.Price}");
-            Console.WriteLine($"CPU Model: {patchedProduct.Data?.CPUModel}");
-            Console.WriteLine($"Hard Disk Size: {patchedProduct.Data?.HardDiskSize}");
+            Print(patched);
         }
     }
 
-    public static async Task<string> DeleteDataAsync(Product createdProduct)
+    // DELETE
+    public static async Task DeleteDataAsync(Product product)
     {
-        string deleteUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
-        bool isDeleted = await ApiClient.DeleteProductAsync(deleteUrl);
+        string deleteUrl = $"https://api.restful-api.dev/objects/{product.Id}";
+        bool deleted = await ApiClient.DeleteProductAsync(deleteUrl);
 
-        if (isDeleted)
+        if (deleted)
         {
-            Console.WriteLine($"\n--- Product Deleted ---");
-            Console.WriteLine($"Deleted Product ID: {createdProduct.Id}");
+            Console.WriteLine("\n--- Product Deleted ---");
+            Console.WriteLine($"Deleted Product ID: {product.Id}");
+        }
+    }
+
+    // --- EXCEL READER ---
+    public static List<Product> ReadProductsFromExcel(string folderPath, string fileName)
+    {
+        var products = new List<Product>();
+        string filePath = Path.Combine(folderPath, fileName);
+
+        if (!File.Exists(filePath))
+        {
+            Console.WriteLine($"❌ File not found: {filePath}");
+            return products;
         }
 
-        return createdProduct.Id;
+        try
+        {
+            using (var workbook = new XLWorkbook(filePath))
+            {
+                var worksheet = workbook.Worksheet(1);
+                var range = worksheet.RangeUsed();
+
+                if (range == null)
+                {
+                    Console.WriteLine("❌ Excel file is empty.");
+                    return products;
+                }
+
+                var headers = range.FirstRowUsed()
+                                   .Cells()
+                                   .Select(c => c.GetString().Trim().ToLowerInvariant())
+                                   .ToList();
+
+                string[] expected = { "name", "year", "price", "cpu model", "hard disk size" };
+
+                if (!expected.All(h => headers.Contains(h)))
+                {
+                    Console.WriteLine("❌ Invalid Excel headers.");
+                    Console.WriteLine("Expected: " + string.Join(", ", expected));
+                    Console.WriteLine("Found: " + string.Join(", ", headers));
+                    return products;
+                }
+
+                foreach (var row in range.RowsUsed().Skip(1))
+                {
+                    try
+                    {
+                        string name = row.Cell(headers.IndexOf("name") + 1).GetString();
+                        int year = Convert.ToInt32(row.Cell(headers.IndexOf("year") + 1).GetDouble());
+                        double price = row.Cell(headers.IndexOf("price") + 1).GetDouble();
+                        string cpu = row.Cell(headers.IndexOf("cpu model") + 1).GetString();
+                        string disk = row.Cell(headers.IndexOf("hard disk size") + 1).GetString();
+
+                        if (string.IsNullOrWhiteSpace(name)) continue;
+
+                        products.Add(new Product
+                        {
+                            Name = name,
+                            Data = new ProductData
+                            {
+                                Year = year,
+                                Price = price,
+                                CPUModel = cpu,
+                                HardDiskSize = disk
+                            }
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ Skipping invalid row: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error reading Excel: {ex.Message}");
+        }
+
+        Console.WriteLine($"\n✅ {products.Count} valid products loaded from Excel.");
+        return products;
+    }
+
+    public static void Print(Product p)
+    {
+        Console.WriteLine($"ID: {p.Id}");
+        Console.WriteLine($"Name: {p.Name}");
+        Console.WriteLine($"Year: {p.Data?.Year}");
+        Console.WriteLine($"Price: {p.Data?.Price}");
+        Console.WriteLine($"CPU: {p.Data?.CPUModel}");
+        Console.WriteLine($"Disk: {p.Data?.HardDiskSize}");
     }
 }
 
+// ---------------- PRODUCT DATA CLASS ----------------
 public class ProductData
 {
     [JsonPropertyName("year")]
@@ -301,6 +364,6 @@ public class ProductData
     [JsonPropertyName("CPU model")]
     public string CPUModel { get; set; }
 
-    [JsonPropertyName("Hard disk size")]
+    [JsonPropertyName("hard disk size")]
     public string HardDiskSize { get; set; }
 }
