@@ -7,6 +7,7 @@ public class Program
     public static async Task Main(string[] args)
     {
         string postUrl = "https://api.restful-api.dev/objects";
+        string searchProductName = "iPhone 17";
 
         try
         {
@@ -25,6 +26,7 @@ public class Program
                 Console.WriteLine("No valid products found in Excel. Exiting...");
                 return;
             }
+            List< Product> newlyAddedProduct   = new List<Product>();
 
             foreach (var prod in products)
             {
@@ -45,21 +47,29 @@ public class Program
                 Console.WriteLine("\nFetching created product (GET)...");
                 string getUrl = $"https://api.restful-api.dev/objects/{createdProduct.Id}";
                 await Product.GetDataAsync(getUrl);
+                newlyAddedProduct.Add(createdProduct);
+            }
+                Product selectedProduct = newlyAddedProduct.Find(p =>p.Name != null &
+                p.Name.Equals(searchProductName, StringComparison.OrdinalIgnoreCase));
+
+                if (selectedProduct == null)
+                {
+                    Console.WriteLine("Product 'iPhone 17' was NOT found among posted products.");
+                    return;
+                }   
 
                 // --- PUT ---
                 Console.WriteLine("\nUpdating product (PUT)...");
-                await Product.PutDataAsync(createdProduct);
+                await Product.PutDataAsync(selectedProduct);
 
                 // --- PATCH ---
                 Console.WriteLine("\nPatching product (PATCH)...");
-                await Product.PatchDataAsync(createdProduct);
+                await Product.PatchDataAsync(selectedProduct);
 
                 // --- DELETE ---
                 Console.WriteLine("\nDeleting product (DELETE)...");
-                await Product.DeleteDataAsync(createdProduct);
-            }
-
-            Console.WriteLine("\n Process completed for all Excel products.");
+                await Product.DeleteDataAsync(selectedProduct);
+                    Console.WriteLine("\n Process completed for all Excel products.");
         }
         catch (Exception ex)
         {

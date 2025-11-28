@@ -13,7 +13,7 @@ public static class ExcelReader
 
         if (!File.Exists(filePath))
         {
-            Console.WriteLine($"❌ File not found: {filePath}");
+            Console.WriteLine($"File not found: {filePath}");
             return products;
         }
 
@@ -26,7 +26,7 @@ public static class ExcelReader
 
                 if (range == null)
                 {
-                    Console.WriteLine("❌ Excel file is empty.");
+                    Console.WriteLine("Excel file is empty.");
                     return products;
                 }
 
@@ -39,7 +39,7 @@ public static class ExcelReader
 
                 if (!expected.All(h => headers.Contains(h)))
                 {
-                    Console.WriteLine("❌ Invalid Excel headers.");
+                    Console.WriteLine("Invalid Excel headers.");
                     Console.WriteLine("Expected: " + string.Join(", ", expected));
                     Console.WriteLine("Found: " + string.Join(", ", headers));
                     return products;
@@ -71,17 +71,17 @@ public static class ExcelReader
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"⚠️ Skipping invalid row: {ex.Message}");
+                        Console.WriteLine($"Skipping invalid row: {ex.Message}");
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error reading Excel: {ex.Message}");
+            Console.WriteLine($"Error reading Excel: {ex.Message}");
         }
 
-        Console.WriteLine($"\n✅ {products.Count} valid products loaded from Excel.");
+        Console.WriteLine($"\n{products.Count} valid products loaded from Excel.");
         return products;
     }
 }
